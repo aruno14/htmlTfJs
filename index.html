@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>Face age detection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection"></script>
+
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>Face and Age Detection</h1>
+        <video id="webcamVideo" width="640" height="480" autoplay playsinline style="margin-top: 20px;"></video>
+        <button id="startButton">Start Webcam</button>
+        <button id="analyseButton">Analyze Webcam Image</button>
+        <div id="faceImageContainer" style="margin-top: 20px;"></div>
+        <script>
+            const ageArray = [ 2.5,  7.5, 12.5, 17.5, 22.5, 27.5, 32.5, 37.5, 42.5, 47.5, 52.5,
+       57.5, 62.5, 67.5, 72.5, 77.5, 82.5, 87.5, 92.5, 97.5];
+            const ageRange = 5;
+            const ageRangeHalf = ageRange/2;
+            const faceDetectionModel = faceDetection.SupportedModels.MediaPipeFaceDetector;
+            const faceDetectionConfig = {
+                runtime: 'mediapipe',
+                solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/face_detection',
+            };
+            const agePredictionModelUrl = 'tfjs_model/model.json';
+            var agePredictionModel = null;
+
+            document.getElementById('startButton').addEventListener('click', async () => {
+                const videoElement = document.getElementById('webcamVideo');
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    videoElement.srcObject = stream;
+                } catch (error) {
+                    console.error('Error accessing webcam:', error);
+                }
+            });
+
+            document.getElementById('analyseButton').addEventListener('click', async () => {
+                const detector = await faceDetection.createDetector(faceDetectionModel, faceDetectionConfig);
+                const videoElement = document.getElementById('webcamVideo');
+                const estimationConfig = { flipHorizontal: false };
+                const faces = await detector.estimateFaces(videoElement, estimationConfig);
+
+                if (faces.length > 0) {
+                    const face = faces[0];
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.width = videoElement.width;
+                    canvas.height = videoElement.height;
+                    context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+
+                    const faceImageData = context.getImageData(
+                        face.box.xMin,
+                        face.box.yMin,
+                        face.box.width,
+                        face.box.height
+                    );
+
+                    const canvasFace = document.createElement('canvas');
+                    const contextFace = canvasFace.getContext('2d');
+                    canvasFace.width = faceImageData.width;
+                    canvasFace.height = faceImageData.height;
+                    contextFace.putImageData(faceImageData, 0, 0);
+
+                    const faceImage = new Image();
+                    faceImage.src = canvasFace.toDataURL('image/png');
+
+                    const agePrediction = await predictAge(faceImageData);
+
+                    const faceImageContainer = document.getElementById('faceImageContainer');
+                    faceImageContainer.innerHTML = '';
+                    faceImageContainer.appendChild(faceImage);
+
+                    const ageElement = document.createElement('p');
+                    ageElement.innerText = `Predicted Age: ${agePrediction}`;
+                    faceImageContainer.appendChild(ageElement);
+                }
+            });
+
+            // Function to predict age using the TensorFlow.js model
+            async function predictAge(faceImageData) {
+                if (agePredictionModel == null)
+                {
+                    agePredictionModel = await tf.loadGraphModel(agePredictionModelUrl);
+                }
+
+                const inputTensor = tf.browser.fromPixels(faceImageData).resizeNearestNeighbor([128, 128]).toFloat();
+                const input = inputTensor.div(tf.scalar(255)).expandDims();
+                console.log(input);
+
+                const predictions = agePredictionModel.predict(input);
+
+                const predictedAge = predictions.dataSync();
+                console.log(predictedAge);
+                
+                const predAge = tf.sum(tf.mul(predictedAge, ageArray))
+                
+                // Cleanup
+                inputTensor.dispose();
+                input.dispose();
+                predictions.dispose();
+
+                return predAge.dataSync()[0];
+            }
+        </script>
+    </div>
+</body>
+</html>
