@@ -9,12 +9,11 @@
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection"></script>
-
 </head>
 <body>
-    <div class="container mt-5">
+    <div>
         <h1>Face and Age Detection</h1>
-        <video id="webcamVideo" width="640" height="480" autoplay playsinline style="margin-top: 20px;"></video>
+        <video id="webcamVideo" width="640" height="480" autoplay playsinline style="margin-top: 20px;display: none;"></video>
         <button id="startButton">Start Webcam</button>
         <button id="analyseButton">Analyze Webcam Image</button>
         <div id="faceImageContainer" style="margin-top: 20px;"></div>
@@ -36,6 +35,7 @@
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                     videoElement.srcObject = stream;
+                    videoElement.style.display = 'block';
                 } catch (error) {
                     console.error('Error accessing webcam:', error);
                 }
@@ -45,22 +45,20 @@
                 const detector = await faceDetection.createDetector(faceDetectionModel, faceDetectionConfig);
                 const videoElement = document.getElementById('webcamVideo');
                 const estimationConfig = { flipHorizontal: false };
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = videoElement.width;
+                canvas.height = videoElement.height;
+                context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
                 const faces = await detector.estimateFaces(videoElement, estimationConfig);
+                console.log(faces);
 
-                if (faces.length > 0) {
-                    const face = faces[0];
-                    const canvas = document.createElement('canvas');
-                    const context = canvas.getContext('2d');
-                    canvas.width = videoElement.width;
-                    canvas.height = videoElement.height;
-                    context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                const faceImageContainer = document.getElementById('faceImageContainer');
+                faceImageContainer.innerHTML = '';
 
-                    const faceImageData = context.getImageData(
-                        face.box.xMin,
-                        face.box.yMin,
-                        face.box.width,
-                        face.box.height
-                    );
+                for (const face of faces) {
+                    const faceImageData = context.getImageData(face.box.xMin, face.box.yMin, face.box.width, face.box.height);
+                    console.log(faceImageData);
 
                     const canvasFace = document.createElement('canvas');
                     const contextFace = canvasFace.getContext('2d');
@@ -69,12 +67,9 @@
                     contextFace.putImageData(faceImageData, 0, 0);
 
                     const faceImage = new Image();
-                    faceImage.src = canvasFace.toDataURL('image/png');
+                    faceImage.src = canvasFace.toDataURL('image/jpg');
 
                     const agePrediction = await predictAge(faceImageData);
-
-                    const faceImageContainer = document.getElementById('faceImageContainer');
-                    faceImageContainer.innerHTML = '';
                     faceImageContainer.appendChild(faceImage);
 
                     const ageElement = document.createElement('p');
@@ -98,7 +93,6 @@
 
                 const predictedAge = predictions.dataSync();
                 console.log(predictedAge);
-                
                 const predAge = tf.sum(tf.mul(predictedAge, ageArray))
                 
                 // Cleanup
